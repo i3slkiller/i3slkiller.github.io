@@ -8,7 +8,7 @@ enableGitInfo = "true"
 
 [params]
 	author = 'i3slkiller'
-	mainSections = ["post"]
+	mainSections = ["posts"]
 
 [params.mysite]
 	copystart = "2022" 
