@@ -1,3 +1,27 @@
-baseURL = 'http://example.org/'
-languageCode = 'en-us'
-title = 'My New Hugo Site'
+baseURL = '/'
+defaultContentLanguageInSubdir = 'true'
+theme = 'monodark'
+relativeURLs = 'true'
+markup.tableOfContents.endLevel = 4
+copyright = "(C) 2022-{year} {author}"
+enableGitInfo = "true"
+
+[params]
+	author = 'i3slkiller'
+	mainSections = ["post"]
+
+[params.mysite]
+	copystart = "2022" 
+
+defaultContentLanguage = 'en'
+[languages]
+	[languages.en]
+		contentDir = "content/en"
+		languageCode = 'en-us'
+		languageName = "English"
+		title = "test"
+	[languages.pl]
+		contentDir = "content/pl"
+		languageCode = 'pl-pl'
+		languageName = "Polski"
+		title = "test"
