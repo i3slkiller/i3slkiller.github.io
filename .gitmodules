@@ -1,0 +1,3 @@
+[submodule "themes/monodark"]
+	path = themes/monodark
+	url = git@gitlab.com:i3slkiller/monodark-hugo-theme.git
