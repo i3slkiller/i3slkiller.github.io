@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eo pipefail
+
+grep -rl "draft: false" content | while read i; do
+	sed -i "s/<\[FillPublishDate\]>/`date +%Y-%m-%dT%H:%M:%S%:z`/" "$i"
+	git add -u "$i"
+done
