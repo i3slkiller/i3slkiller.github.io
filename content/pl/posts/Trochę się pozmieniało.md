@@ -1,8 +1,8 @@
 ---
 title: "Trochę się pozmieniało"
 date: 2023-02-28T20:42:12+01:00
-publishDate: <[FillPublishDate]>
-draft: true
+publishDate: 2023-03-01T09:16:10+01:00
+draft: false
 tags: ['warmerise', 'zmiany', 'powrót', 'warmerisecustommaps', 'theisland2022', 'snowwar', 'theisland2']
 translationKey: TrocheSiePozmienialo
 ---
