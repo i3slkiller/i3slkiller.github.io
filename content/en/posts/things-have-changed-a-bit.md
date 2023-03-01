@@ -1,8 +1,8 @@
 ---
 title: "Things have changed a bit"
 date: 2023-03-01T09:35:58+01:00
-publishDate: <[FillPublishDate]>
-draft: true
+publishDate: 2023-03-01T21:36:18+01:00
+draft: false
 tags: ['warmerise', 'changes', 'return', 'warmerisecustommaps', 'theisland2022', 'snowwar', 'theisland2']
 translationKey: TrocheSiePozmienialo
 ---
