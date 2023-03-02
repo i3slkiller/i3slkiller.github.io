@@ -13,6 +13,11 @@ enableGitInfo = "true"
 [params.mysite]
 	copystart = "2023" 
 
+
+[params.comments]
+	enabled = 'true'
+	repo = 'i3slkiller/i3slkiller.github.io'
+
 defaultContentLanguage = 'en'
 [languages]
 	[languages.en]
