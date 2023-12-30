@@ -3,7 +3,7 @@ title: "Szyfrowanie całego dysku z Porteusem (no, prawie całego)"
 date: 2023-12-30
 publishDate: 2023-12-30T14:42:22+01:00
 draft: false
-tags: ['poradnik', 'porteus', 'szyfrowanie', 'luks', 'grub2', 'linux']
+tags: ['poradnik', 'porteus', 'szyfrowanie', 'luks', 'grub2', 'initrd', 'linux']
 translationKey: PorteusFullDiskEncryption
 ---
 
