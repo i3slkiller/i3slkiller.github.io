@@ -1,0 +1,574 @@
+<!doctype html><html lang=en-us><meta charset=utf8><title>(Almost) full Porteus disk encryption | Internet Black Hole</title>
+<link rel=stylesheet href=../../../css/style.css type=text/css><body><header><nav class=navbar role=navigation><div class=navbar__left><a href=../../../en><strong>Internet Black Hole</strong></a></div><div class=navbar__right><a href=../../../en/posts>Posts</a>
+<a href=../../../en/tags>Tags</a></div></nav></header><main><section class=section><article><div class=blog__container><h1 class=blog__title>(Almost) full Porteus disk encryption</h1><div class=blog__details><div class=blog__info><p>By
+i3slkiller</p><p>Published: <time>2023-12-30</time> |
+20 minutes read</p></div><div class=blog__translations><a href=../../../pl/posts/szyfrowanie-calego-dysku-z-potreusem-no-prawie-calego/ title="Szyfrowanie całego dysku z Porteusem (no, prawie całego)">Polski</a></div></div><details class=blog__toc><summary class=blog__toc_title>Table of contents</summary><nav id=TableOfContents><ul><li><a href=#disclaimer>Disclaimer</a></li><li><a href=#what-we-will-need>What we will need</a></li><li><a href=#preparing-disk>Preparing disk</a><ul><li><a href=#selecting-a-disk>Selecting a disk</a></li><li><a href=#overwriting-previous-disk-contents>Overwriting previous disk contents</a></li><li><a href=#creating-partitions>Creating partitions</a></li><li><a href=#formatting-partition>Formatting partition</a></li></ul></li><li><a href=#system-and-grub-installation>System and GRUB installation</a></li><li><a href=#ramdisk-modification>Ramdisk modification</a></li><li><a href=#creating-a-second-ramdisk-image-for-required-kernel-modules-and-program-for-opening-encrypted-container>Creating a second ramdisk image (for required kernel modules and program for opening encrypted container)</a></li><li><a href=#finish>Finish</a></li><li><a href=#but-thats-not-all>But that&rsquo;s not all</a><ul><li><a href=#when-you-dont-want-to-enter-container-passwords-multiple-times>When you don&rsquo;t want to enter container passwords multiple times</a></li><li><a href=#when-you-need-to-update-kernel>When you need to update kernel</a></li><li><a href=#about-fsck-cheatcode>About fsck cheatcode</a></li><li><a href=#about-extramod-and-rootcopy-cheatcodes>About extramod and rootcopy cheatcodes</a></li></ul></li></ul></nav></details><div class=content><h2 id=disclaimer>Disclaimer</h2><p>All data on target drive will be deleted! Don&rsquo;t forget to backup important data to other disk if you have any. I&rsquo;m not responsible for any damage nor loss of data on other disks resulting from careless use of the programs listed below or selecting the wrong drive or partition.</p><h2 id=what-we-will-need>What we will need</h2><ul><li>target USB stick or external drive</li><li>Porteus ISO</li><li>any Linux distro</li><li>GRUB2 (syslinux, grub4dos, etc. aren&rsquo;t suitable)</li><li>cryptsetup</li><li>fdisk or other partitioning tool</li><li>some text editor</li><li>cpio and xz</li><li>disk format tools (fat32 and choose ext4 or xfs)</li><li>root access</li><li>a bit of time and knowledge</li></ul><p>In Porteus you can make GRUB module with command <code>pmod -m grub</code> and activate it. Apart from that, all above mentioned programs are present in it.</p><h2 id=preparing-disk>Preparing disk</h2><p>For clarity, in this example the system will be &ldquo;installed&rdquo; on a 16 GB Sandisk Ultra USB 3.0. Of course I&rsquo;m not encouraging anyone to buy this pendrive, especially with this capacity, because it can heavily slow down in write (even if not encrypted).</p><h3 id=selecting-a-disk>Selecting a disk</h3><p>Check how the disk for encrypted Porteus presents itself.</p><pre tabindex=0><code>root@porteus:/home/guest# fdisk -l /dev/sd?
+Disk /dev/sda: 238.47 GiB, 256060514304 bytes, 500118192 sectors
+Disk model: SSDPR-CX400-256-
+Units: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disklabel type: dos
+Disk identifier: 0x26dec7f0
+
+Device     Boot  Start       End   Sectors   Size Id Type
+/dev/sda1  *      2048    206847    204800   100M  7 HPFS/NTFS/exFAT
+/dev/sda2       206848 500115455 499908608 238.4G  7 HPFS/NTFS/exFAT
+
+
+Disk /dev/sdb: 3.95 GiB, 4237295616 bytes, 8275968 sectors
+Disk model: Flash Disk      
+Units: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disklabel type: dos
+Disk identifier: 0x10140062
+
+Device     Boot Start     End Sectors  Size Id Type
+/dev/sdb1  *     2048 8275967 8273920  3.9G  c W95 FAT32 (LBA)
+
+
+Disk /dev/sdc: 14.32 GiB, 15376000000 bytes, 30031250 sectors
+Disk model: Ultra           
+Units: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disklabel type: dos
+Disk identifier: 0x00043561
+
+Device     Boot Start      End  Sectors  Size Id Type
+/dev/sdc1  *     2048 30031249 30029202 14.3G  c W95 FAT32 (LBA)
+root@porteus:/home/guest# 
+</code></pre><p>If you still don&rsquo;t know, how this disk presents itself, disconnect it, type</p><pre tabindex=0><code>root@porteus:/home/guest# dmesg -w
+</code></pre><p>and connect it again.</p><p>After connecting disk something like this should appear:</p><pre tabindex=0><code>[*ciach*]
+[  105.277225] usb 2-1: new high-speed USB device number 2 using ehci-pci
+[  105.638838] usb 2-1: New USB device found, idVendor=0781, idProduct=5581, bcdDevice= 1.00
+[  105.638850] usb 2-1: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[  105.638854] usb 2-1: Product: Ultra
+[  105.638856] usb 2-1: Manufacturer: SanDisk
+[  105.638859] usb 2-1: SerialNumber: [*ciach*]
+[  105.641655] usb-storage 2-1:1.0: USB Mass Storage device detected
+[  105.644078] scsi host2: usb-storage 2-1:1.0
+[  106.713581] scsi 2:0:0:0: Direct-Access     SanDisk  Ultra            1.00 PQ: 0 ANSI: 6
+[  106.726900] sd 2:0:0:0: [sdc] 30031250 512-byte logical blocks: (15.4 GB/14.3 GiB)
+[  106.739061] sd 2:0:0:0: [sdc] Write Protect is off
+[  106.739069] sd 2:0:0:0: [sdc] Mode Sense: 43 00 00 00
+[  106.757230] sd 2:0:0:0: [sdc] Write cache: disabled, read cache: enabled, doesn&#39;t support DPO or FUA
+[  106.849243]  sdc: sdc1
+[  106.849420] sd 2:0:0:0: [sdc] Attached SCSI removable disk
+</code></pre><p>As you see, it presents as <code>/dev/sdc</code>. Of course specify correct disk in commands if presents differently.</p><p>Check if <code>/dev/sdc</code> partitions are mounted</p><pre tabindex=0><code>root@porteus:/home/guest# mount | grep sdc
+</code></pre><p>If nothing outputs, it means that they aren&rsquo;t mounted, so move on.</p><h3 id=overwriting-previous-disk-contents>Overwriting previous disk contents</h3><p>WARNING! BEFORE EXECUTING COMMAND BELOW, CHECK AGAIN IF YOU SURELY HAVE SELECTED CORRECT DISK. ALL DATA ON SELECTED DISK WILL BE IRRECOVERABLY DELETED!!!
+You can overwrite entire disk with random data using command</p><pre tabindex=0><code>root@porteus:/home/guest# dd if=/dev/urandom of=/dev/sdc bs=4M status=progress
+</code></pre><p>This may take from few minutes to several hours.</p><h3 id=creating-partitions>Creating partitions</h3><p>Start fdisk on this disk</p><pre tabindex=0><code>root@porteus:/home/guest# fdisk /dev/sdc
+
+Welcome to fdisk (util-linux 2.37.4).
+Changes will remain in memory only, until you decide to write them.
+Be careful before using the write command.
+
+
+Command (m for help):
+</code></pre><p>Create new partition table</p><pre tabindex=0><code>Command (m for help): o
+Created a new DOS disklabel with disk identifier 0x703b1b52.
+</code></pre><p>Create Porteus partition, at the same time leaving 32 MB behind it for EFI (ESP) partition</p><pre tabindex=0><code>Command (m for help): n
+Partition type
+   p   primary (0 primary, 0 extended, 4 free)
+   e   extended (container for logical partitions)
+Select (default p): 
+
+Using default response p.
+Partition number (1-4, default 1): 
+First sector (2048-30031249, default 2048): 
+Last sector, +/-sectors or +/-size{K,M,G,T,P} (2048-30031249, default 30031249): -32M
+
+Created a new partition 1 of type &#39;Linux&#39; and of size 14.3 GiB.
+</code></pre><p>Confirm if you see it</p><pre tabindex=0><code>Partition #1 contains a vfat signature.
+
+Do you want to remove the signature? [Y]es/[N]o: y
+
+The signature will be removed by a write command.
+</code></pre><p>Mark this partition as bootable</p><pre tabindex=0><code>Command (m for help): a
+Selected partition 1
+The bootable flag on partition 1 is enabled now.
+</code></pre><p>Create EFI partition</p><pre tabindex=0><code>Command (m for help): n
+Partition type
+   p   primary (1 primary, 0 extended, 3 free)
+   e   extended (container for logical partitions)
+Select (default p): 
+
+Using default response p.
+Partition number (2-4, default 2): 
+First sector (29966336-30031249, default 29966336): 
+Last sector, +/-sectors or +/-size{K,M,G,T,P} (29966336-30031249, default 30031249): 
+
+Created a new partition 2 of type &#39;Linux&#39; and of size 31.7 MiB.
+</code></pre><p>Change its type to &lsquo;EFI (FAT-12/16/32)&rsquo; (ef)</p><pre tabindex=0><code>Command (m for help): t
+Partition number (1,2, default 2): 
+Hex code or alias (type L to list all): ef
+
+Changed type of partition &#39;Linux&#39; to &#39;EFI (FAT-12/16/32)&#39;.
+</code></pre><p>Check if partition layout is right and - most importantly - if you do it on correct disk.</p><pre tabindex=0><code>Disk /dev/sdc: 14.32 GiB, 15376000000 bytes, 30031250 sectors
+Disk model: Ultra           
+Units: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disklabel type: dos
+Disk identifier: 0x703b1b52
+
+Device     Boot    Start      End  Sectors  Size Id Type
+/dev/sdc1  *        2048 29966335 29964288 14.3G 83 Linux
+/dev/sdc2       29966336 30031249    64914 31.7M ef EFI (FAT-12/16/32)
+
+Filesystem/RAID signature on partition 1 will be wiped.
+</code></pre><p>If everything is OK, then save changes</p><pre tabindex=0><code>Command (m for help): w
+The partition table has been altered.
+Calling ioctl() to re-read partition table.
+Syncing disks.
+
+root@porteus:/home/guest#
+</code></pre><h3 id=formatting-partition>Formatting partition</h3><p>Format EFI partition</p><pre tabindex=0><code>root@porteus:/home/guest# mkfs.vfat /dev/sdc2 
+mkfs.fat 4.2 (2021-01-31)
+root@porteus:/home/guest#
+</code></pre><p>and Porteus partition (LUKS1 because GRUB in BIOS cannot boot from LUKS2 partition even though it should support it)</p><pre tabindex=0><code>root@porteus:/home/guest# cryptsetup -y -s 512 --type=luks1 luksFormat /dev/sdc1
+
+WARNING!
+========
+This will overwrite data on /dev/sdc1 irrevocably.
+
+Are you sure? (Type &#39;yes&#39; in capital letters): YES
+Enter passphrase for /dev/sdc1: 
+Verify passphrase: 
+root@porteus:/home/guest#
+</code></pre><p>Open encrypted container on partition</p><pre tabindex=0><code>root@porteus:/home/guest# cryptsetup luksOpen /dev/sdc1 crypt
+Enter passphrase for /dev/sdc1: 
+root@porteus:/home/guest#
+</code></pre><p>Format inside encrypted container - in this case will format to ext4</p><pre tabindex=0><code>root@porteus:/home/guest# mkfs.ext4 /dev/mapper/crypt 
+mke2fs 1.46.5 (30-Dec-2021)
+64-bit filesystem support is not enabled.  The larger fields afforded by this feature enable full-strength checksumming.  Pass -O 64bit to rectify.
+Creating filesystem with 3745024 4k blocks and 936560 inodes
+Filesystem UUID: f13f291e-3184-425b-95bc-e9a202a5bdb1
+Superblock backups stored on blocks: 
+	32768, 98304, 163840, 229376, 294912, 819200, 884736, 1605632, 2654208
+
+Allocating group tables: done                            
+Writing inode tables: done                            
+Creating journal (16384 blocks): done
+Writing superblocks and filesystem accounting information: done   
+
+root@porteus:/home/guest#
+</code></pre><h2 id=system-and-grub-installation>System and GRUB installation</h2><p>Mount partitions</p><pre tabindex=0><code>root@porteus:/home/guest# mount /dev/mapper/crypt /mnt/dm-0
+root@porteus:/home/guest# mount /dev/sdc2 /mnt/sdc2
+</code></pre><p>Mount Porteus ISO</p><pre tabindex=0><code>root@porteus:/home/guest# mount Porteus-XFCE-v5.01-x86_64.iso /mnt/loop
+mount: /mnt/loop: WARNING: source write-protected, mounted read-only.
+</code></pre><p>and copy everything from it to disk</p><pre tabindex=0><code>root@porteus:/home/guest# cp -r /mnt/loop/* /mnt/dm-0/
+</code></pre><p>ISO won&rsquo;t be need anymore, so unmount it</p><pre tabindex=0><code>root@porteus:/home/guest# umount /mnt/loop/
+</code></pre><p>Install GRUB</p><pre tabindex=0><code>root@porteus:/home/guest# export GRUB_ENABLE_CRYPTODISK=y
+root@porteus:/home/guest# grub-install /dev/sdc --target=i386-pc --boot-directory=/mnt/dm-0/boot/
+Installing for i386-pc platform.
+Installation finished. No error reported.
+root@porteus:/home/guest# grub-install --target=i386-efi --boot-directory=/mnt/dm-0/boot/ --efi-directory=/mnt/sdc2/ --removable
+Installing for i386-efi platform.
+Installation finished. No error reported.
+root@porteus:/home/guest# grub-install --target=x86_64-efi --boot-directory=/mnt/dm-0/boot/ --efi-directory=/mnt/sdc2/ --removable
+Installing for x86_64-efi platform.
+Installation finished. No error reported.
+root@porteus:/home/guest#
+</code></pre><p>Don&rsquo;t forget about very modest GRUB config</p><pre tabindex=0><code>menuentry &#34;Porteus&#34; {
+	linux /boot/syslinux/vmlinuz from=UUID:RePlAcE-bY-uUiD-oF-cOnTaInEr
+	initrd /boot/syslinux/initrd.xz
+}
+</code></pre><p>Get container UUID by command</p><pre tabindex=0><code>root@porteus:/home/guest# blkid /dev/sdc1
+/dev/sdc1: UUID=&#34;5b9b4bcd-cb8e-4858-a966-8dea23ec676e&#34; TYPE=&#34;crypto_LUKS&#34; PARTUUID=&#34;703b1b52-01&#34;
+</code></pre><p>DON&rsquo;T SET UUID INSIDE ENCRYPTED CONTAINER!!!</p><pre tabindex=0><code>root@porteus:/home/guest# blkid /dev/mapper/crypt
+/dev/mapper/crypt: UUID=&#34;f13f291e-3184-425b-95bc-e9a202a5bdb1&#34; BLOCK_SIZE=&#34;4096&#34; TYPE=&#34;ext4&#34;
+</code></pre><p>Replace string <code>RePlAcE-bY-uUiD-oF-cOnTaInEr</code> with this and save config in <code>/mnt/dm-0/boot/grub/grub.cfg</code>.</p><h2 id=ramdisk-modification>Ramdisk modification</h2><p>Now GRUB is able to load kernel and ramdisk image (initrd) from encrypted container on partition (first asking for password for it), but Porteus can&rsquo;t recognize nor open it (yet).</p><p>Create temporary folder and go to it</p><pre tabindex=0><code>root@porteus:/home/guest# cd $(mktemp -d)
+root@porteus:/tmp/tmp.CVEW0IeOtV#
+</code></pre><p>Extract ramdisk image here</p><pre tabindex=0><code>root@porteus:/tmp/tmp.CVEW0IeOtV# xz -dc /mnt/dm-0/boot/syslinux/initrd.xz | cpio -i
+4827 blocks
+root@porteus:/tmp/tmp.CVEW0IeOtV#
+</code></pre><p>Save this patch anywhere, eg. in <code>/tmp/patch</code></p><div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-diff data-lang=diff><span style=display:flex><span>diff --no-dereference -ruN 1/cleanup 2/cleanup
+</span></span><span style=display:flex><span><span style=color:#f92672>--- 1/cleanup	2023-12-23 15:47:29.297743669 +0100
+</span></span></span><span style=display:flex><span><span style=color:#f92672></span><span style=color:#a6e22e>+++ 2/cleanup	2023-12-23 16:49:16.302471492 +0100
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e></span><span style=color:#75715e>@@ -72,17 +72,26 @@
+</span></span></span><span style=display:flex><span><span style=color:#75715e></span> fi
+</span></span><span style=display:flex><span> 
+</span></span><span style=display:flex><span> echo &#34;unmounting everything else&#34;
+</span></span><span style=display:flex><span><span style=color:#a6e22e>+# Close encrypted container file:
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+if [ -b /dev/mapper/crypt ]; then
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+    umount /dev/mapper/crypt
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+    cryptsetup luksClose crypt
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+    losetup -d /dev/loop2
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+fi
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e></span> # RSC: workaround for &#34;umount -a&#34; that fails on recent kernels
+</span></span><span style=display:flex><span><span style=color:#f92672>-ALL=`cat /proc/mounts | cut -d&#34; &#34; -f2 | egrep -v &#34;(tmpfs|/dev)&#34; | tr &#34;\n&#34; &#34; &#34;`
+</span></span></span><span style=display:flex><span><span style=color:#f92672></span><span style=color:#a6e22e>+ALL=`cat /proc/mounts | cut -d&#34; &#34; -f2 | egrep -v &#34;(tmpfs|/dev|/proc|/sys)&#34; | tr &#34;\n&#34; &#34; &#34;`
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e></span> umount $ALL 2&gt;/dev/null
+</span></span><span style=display:flex><span><span style=color:#f92672>-if [ $? -ne 0 ]; then
+</span></span></span><span style=display:flex><span><span style=color:#f92672>-    # Close encrypted container:
+</span></span></span><span style=display:flex><span><span style=color:#f92672>-    if [ -b /dev/mapper/crypt ]; then
+</span></span></span><span style=display:flex><span><span style=color:#f92672>-        cryptsetup luksClose crypt
+</span></span></span><span style=display:flex><span><span style=color:#f92672>-        losetup -d /dev/loop2
+</span></span></span><span style=display:flex><span><span style=color:#f92672>-    fi
+</span></span></span><span style=display:flex><span><span style=color:#f92672>-    umount -ar 2&gt;/dev/null
+</span></span></span><span style=display:flex><span><span style=color:#f92672></span><span style=color:#a6e22e>+if [ $? != 0 ]; then
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+    x=3
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+    while [ $x -gt 0 ]; do
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+        umount -art $(grep -v nodev /proc/filesystems | cut -f2 | tr &#39;\n&#39; &#39;,&#39;) 2&gt; /dev/null &amp;&amp; break
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+        sleep 0.5
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+        let x=x-1
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+    done
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e></span> fi
+</span></span><span style=display:flex><span><span style=color:#a6e22e>+# Close encrypted container partitions:
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+[ -b /dev/mapper/changes ] &amp;&amp; cryptsetup luksClose /dev/mapper/changes
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+[ -b /dev/mapper/porteus ] &amp;&amp; cryptsetup luksClose /dev/mapper/porteus
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e></span> 
+</span></span><span style=display:flex><span> # Eject cdrom device:
+</span></span><span style=display:flex><span> if [ -z &#34;`egrep -qo &#34; noeject( |\$)&#34; /proc/cmdline 2&gt;/dev/null`&#34; -a -b &#34;$CD&#34; ]; then
+</span></span><span style=display:flex><span>diff --no-dereference -ruN 1/etc/porteus/initrd.ver 2/etc/porteus/initrd.ver
+</span></span><span style=display:flex><span><span style=color:#f92672>--- 1/etc/porteus/initrd.ver	2023-12-23 15:47:29.297743669 +0100
+</span></span></span><span style=display:flex><span><span style=color:#f92672></span><span style=color:#a6e22e>+++ 2/etc/porteus/initrd.ver	2023-12-23 15:42:16.488611446 +0100
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e></span><span style=color:#75715e>@@ -1 +1 @@
+</span></span></span><span style=display:flex><span><span style=color:#75715e></span><span style=color:#f92672>-initrd.xz:20230923
+</span></span></span><span style=display:flex><span><span style=color:#f92672></span><span style=color:#a6e22e>+initrd.xz:20231223-luks
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e></span>diff --no-dereference -ruN 1/fatal 2/fatal
+</span></span><span style=display:flex><span><span style=color:#f92672>--- 1/fatal	2023-12-23 15:47:29.285742979 +0100
+</span></span></span><span style=display:flex><span><span style=color:#f92672></span><span style=color:#a6e22e>+++ 2/fatal	2023-12-09 14:21:16.959591379 +0100
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e></span><span style=color:#75715e>@@ -1,5 +1,7 @@
+</span></span></span><span style=display:flex><span><span style=color:#75715e></span> #!/bin/sh
+</span></span><span style=display:flex><span> 
+</span></span><span style=display:flex><span><span style=color:#a6e22e>+rm -rf /keys
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e></span> echo &amp;&amp; echo
+</span></span><span style=display:flex><span> echo &#34;[1;36m&#34;&#34;Porteus data not found.
+</span></span><span style=display:flex><span> You are maybe using an unsupported boot device (eg. SCSI or old PCMCIA).
+</span></span><span style=display:flex><span><span style=color:#75715e>@@ -8,6 +10,9 @@
+</span></span></span><span style=display:flex><span><span style=color:#75715e></span> Make sure that your boot parameters (cheatcodes) are correct.
+</span></span><span style=display:flex><span> In case of booting over network - check if the driver for your NIC
+</span></span><span style=display:flex><span> is included in initrd image.
+</span></span><span style=display:flex><span><span style=color:#a6e22e>+In case of boot disk encryption - make sure that encrypted disk is plugged in
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+and the passphrase which you enter is correct. Check also if cryptsetup
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+program and kernel modules such as dm-crypt and dm-mod exists in initrd image.
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e></span> 
+</span></span><span style=display:flex><span> Press space/enter to unmount all devices and reboot or any other key
+</span></span><span style=display:flex><span> to drop to the debug shell.&#34;&#34;[0m&#34;
+</span></span><span style=display:flex><span>diff --no-dereference -ruN 1/finit 2/finit
+</span></span><span style=display:flex><span><span style=color:#f92672>--- 1/finit	2023-12-23 15:47:29.237740219 +0100
+</span></span></span><span style=display:flex><span><span style=color:#f92672></span><span style=color:#a6e22e>+++ 2/finit	2023-12-08 19:38:48.590680563 +0100
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e></span><span style=color:#75715e>@@ -98,7 +98,7 @@
+</span></span></span><span style=display:flex><span><span style=color:#75715e></span>     [ -d /mnt/$DEV ] || mount_device $DEV
+</span></span><span style=display:flex><span>     [ $1 /mnt/$DEV/$LPTH ]
+</span></span><span style=display:flex><span> elif [ $LPATH = UUID: -o $LPATH = LABEL ]; then
+</span></span><span style=display:flex><span><span style=color:#f92672>-    ID=`echo $2 | cut -d: -f2 | cut -d/ -f1`; LPTH=`echo $2 | cut -d/ -f2-`; DEV=`blkid | grep $ID | cut -d: -f1 | cut -d/ -f3`; SLEEP=6
+</span></span></span><span style=display:flex><span><span style=color:#f92672></span><span style=color:#a6e22e>+    ID=`echo $2 | cut -d: -f2 | cut -d/ -f1`; LPTH=`echo $2 | cut -d/ -f2-`; [ $LPATH$ID == $LPTH ] &amp;&amp; LPTH=&#34;&#34;; DEV=`blkid | grep $ID | cut -d: -f1 | cut -d/ -f3`; SLEEP=6
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e></span>     while [ $SLEEP -gt 0 -a &#34;$DEV&#34; = &#34;&#34; ]; do nap; let SLEEP=SLEEP-1; fstab; DEV=`blkid | grep $ID | cut -d: -f1 | cut -d/ -f3`; done
+</span></span><span style=display:flex><span>     [ -d /mnt/$DEV ] || mount_device $DEV
+</span></span><span style=display:flex><span>     [ $1 /mnt/$DEV/$LPTH ]
+</span></span><span style=display:flex><span><span style=color:#75715e>@@ -109,6 +109,12 @@
+</span></span></span><span style=display:flex><span><span style=color:#75715e></span> # Check if a location is writable
+</span></span><span style=display:flex><span> is_writable(){ touch $1/.test 2&gt;/dev/null; [ -e $1/.test ] &amp;&amp; rm $1/.test; }
+</span></span><span style=display:flex><span> 
+</span></span><span style=display:flex><span><span style=color:#a6e22e>+# Check if partition is encrypted with LUKS
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+is_luks(){ blkid $1 2&gt; /dev/null | cut -d&#34; &#34; -f3- | grep -q crypto_LUKS; }
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+# Load modules required for opening encrypted partition
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+load_dm_modules(){ if [ ! $DMLOADED ]; then for x in dm_crypt cryptd cbc sha256_generic aes_generic aes_x86_64; do modprobe $x 2&gt;/dev/null; done; DMLOADED=1; fi }
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e></span> # Booting failed. Failed to find porteus files. 
+</span></span><span style=display:flex><span> fail() { echo -e $i&#34;couldn&#39;t find $1. Correct your from= cheatcode.\n Documentation in /usr/doc/porteus. Press &#39;enter&#39; to continue booting.&#34;; read -s; }
+</span></span><span style=display:flex><span> 
+</span></span><span style=display:flex><span>diff --no-dereference -ruN 1/linuxrc 2/linuxrc
+</span></span><span style=display:flex><span><span style=color:#f92672>--- 1/linuxrc	2023-12-23 15:47:29.217739070 +0100
+</span></span></span><span style=display:flex><span><span style=color:#f92672></span><span style=color:#a6e22e>+++ 2/linuxrc	2023-12-21 18:16:29.999777917 +0100
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e></span><span style=color:#75715e>@@ -80,6 +80,22 @@
+</span></span></span><span style=display:flex><span><span style=color:#75715e></span> 		locate -e $FROM/porteus/$CFG
+</span></span><span style=display:flex><span> 		if [ $? -eq 0 ]; then
+</span></span><span style=display:flex><span> 			DIR=`echo $LPTH | rev | cut -d/ -f3- | rev`; [ $DIR ] &amp;&amp; FOLDER=$DIR/porteus
+</span></span><span style=display:flex><span><span style=color:#a6e22e>+		elif is_luks /dev/$DEV; then
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+			load_dm_modules
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+			echo $i&#34;found encrypted Porteus partition on /dev/$DEV&#34;
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+			if [ -f /keys/porteus ]; then
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+				cryptsetup luksOpen /dev/$DEV porteus --key-file=/keys/porteus || cryptsetup luksOpen /dev/$DEV porteus
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+			else
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+				cryptsetup luksOpen /dev/$DEV porteus
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+			fi
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+			[ $? -ne 0 ] &amp;&amp; { echo -e &#34;${BOLD}${RED}Cannot open encrypted partition${RST}&#34; &amp;&amp; . fatal; }
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+			LUKSUUID=`blkid /dev/mapper/porteus | cut -d &#39;&#34;&#39; -f2`
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+			LUKSDEV=`blkid /dev/dm-* | grep $LUKSUUID | cut -d: -f1 | cut -d/ -f3`
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+			TRUEDEV=$DEV
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+			param fsck &amp;&amp; fsck_dat /dev/mapper/porteus
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+			mount_device $LUKSDEV
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+			DIR=`echo $LPTH | rev | cut -d/ -f3- | rev`; [ $DIR ] &amp;&amp; FOLDER=$DIR/porteus
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+			locate -e /mnt/$LUKSDEV/$DIR/porteus/$CFG || { echo -e &#34;${BOLD}${RED}Porteus config not found on encrypted partition${RST}&#34; &amp;&amp; . fatal; }
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e></span> 		else
+</span></span><span style=display:flex><span> 			echo -e &#34;${YELLOW}from= cheatcode is incorrect, press enter to search through all devices${RST}&#34;
+</span></span><span style=display:flex><span> 			read -s; search -e porteus/$CFG
+</span></span><span style=display:flex><span><span style=color:#75715e>@@ -90,6 +106,7 @@
+</span></span></span><span style=display:flex><span><span style=color:#75715e></span> 	CFGDEV=/mnt/$DEV
+</span></span><span style=display:flex><span> fi
+</span></span><span style=display:flex><span> 
+</span></span><span style=display:flex><span><span style=color:#a6e22e>+rm -f /keys/porteus
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e></span> [ -e $CFGDEV/$FOLDER/$CFG ] &amp;&amp; PTH=$CFGDEV/$FOLDER || . fatal
+</span></span><span style=display:flex><span> 
+</span></span><span style=display:flex><span> # Set some variables to export as environment variables
+</span></span><span style=display:flex><span><span style=color:#75715e>@@ -119,17 +136,62 @@
+</span></span></span><span style=display:flex><span><span style=color:#75715e></span> if [ $CHANGES ]; then
+</span></span><span style=display:flex><span> 	echo $i&#34;setting up directory for changes&#34;
+</span></span><span style=display:flex><span> 	CHNEXIT=`echo $CHANGES | cut -d: -f1`; [ $CHNEXIT = EXIT ] &amp;&amp; CHANGES=`echo $CHANGES | cut -d: -f2-`
+</span></span><span style=display:flex><span><span style=color:#f92672>-	[ -r $CFGDEV/$CHANGES ] &amp;&amp; { DEV=`echo $CFGDEV | sed s@/mnt/@@`; LPTH=$CHANGES; } || locate -r $CHANGES
+</span></span></span><span style=display:flex><span><span style=color:#f92672></span><span style=color:#a6e22e>+	[ -r $CFGDEV/$CHANGES ] &amp;&amp; { DEV=`echo $CFGDEV | sed s@/mnt/@@`; LPTH=$CHANGES; } || locate -r $CHANGES || is_luks /dev/$DEV
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e></span> 	if [ $? -eq 0 ]; then
+</span></span><span style=display:flex><span> 		if [ -d /mnt/$DEV/$LPTH ]; then
+</span></span><span style=display:flex><span> 			mkdir -p /mnt/$DEV/$LPTH/changes 2&gt;/dev/null &amp;&amp; \
+</span></span><span style=display:flex><span> 			mount -o bind /mnt/$DEV/$LPTH/changes /memory/changes &amp;&amp; touch /memory/changes/._test1 2&gt;/dev/null
+</span></span><span style=display:flex><span><span style=color:#a6e22e>+		elif is_luks /dev/$DEV; then
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+			load_dm_modules
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+			echo $i&#34;found encrypted changes partition on /dev/$DEV&#34;
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+			if [ $DEV != &#34;$TRUEDEV&#34; ]; then
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+				if [ -f /keys/changes ]; then
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+					/opt/000-kernel/sbin/cryptsetup luksOpen /dev/$DEV changes --key-file=/keys/changes || /opt/000-kernel/sbin/cryptsetup luksOpen /dev/$DEV changes
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+				else
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+					/opt/000-kernel/sbin/cryptsetup luksOpen /dev/$DEV changes
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+				fi
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+				if [ $? -eq 0 ]; then
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+					CHGLUKSUUID=`blkid /dev/mapper/changes | cut -d &#39;&#34;&#39; -f2`
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+					CHGLUKSDEV=`blkid /dev/dm-* | grep $CHGLUKSUUID | cut -d: -f1 | cut -d/ -f3`
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+					CHGTRUEDEV=$DEV
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+					param fsck &amp;&amp; fsck_dat /dev/mapper/changes
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+					mount_device $CHGLUKSDEV
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+				fi
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+			else
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+				echo $i&#34;encrypted changes partition and Porteus partition are the same&#34;
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+				CHGLUKSDEV=$LUKSDEV
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+			fi
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+			if [ &#34;$CHGLUKSDEV&#34; -a -d /mnt/$CHGLUKSDEV/$LPTH ]; then
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+				mkdir -p /mnt/$CHGLUKSDEV/$LPTH/changes 2&gt;/dev/null &amp;&amp; \
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+				mount -o bind /mnt/$CHGLUKSDEV/$LPTH/changes /memory/changes &amp;&amp; touch /memory/changes/._test1 2&gt;/dev/null
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+			elif [ &#34;$CHGLUKSDEV&#34; -a -f /mnt/$CHGLUKSDEV/$LPTH ]; then
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+				if is_luks /mnt/$CHGLUKSDEV/$LPTH; then
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+					losetup /dev/loop2 /mnt/$CHGLUKSDEV/$LPTH
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+					echo $i&#34;found encrypted .dat container&#34;
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+					if [ -f /keys/changesdat ]; then
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+						/opt/000-kernel/sbin/cryptsetup luksOpen /dev/loop2 crypt --key-file=/keys/changesdat || /opt/000-kernel/sbin/cryptsetup luksOpen /dev/loop2 crypt
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+					else
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+						/opt/000-kernel/sbin/cryptsetup luksOpen /dev/loop2 crypt
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+					fi
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+					fsck_dat /dev/mapper/crypt
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+					mount /dev/mapper/crypt /memory/changes 2&gt;/dev/null &amp;&amp; touch /memory/changes/._test1 2&gt;/dev/null
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+				else
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+					fsck_dat /mnt/$CHGLUKSDEV/$LPTH
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+					mount -o loop /mnt/$CHGLUKSDEV/$LPTH /memory/changes 2&gt;/dev/null &amp;&amp; touch /memory/changes/._test1 2&gt;/dev/null
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+				fi
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+			else
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+				CHGERR=3; fail $CHANGES; fail_chn; false
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+			fi
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e></span> 		else
+</span></span><span style=display:flex><span><span style=color:#f92672>-			if blkid /mnt/$DEV/$LPTH 2&gt;/dev/null | cut -d&#34; &#34; -f3- | grep -q _LUKS; then
+</span></span></span><span style=display:flex><span><span style=color:#f92672>-				for x in dm_crypt cryptd cbc sha256_generic aes_generic aes_x86_64; do modprobe $x 2&gt;/dev/null; done
+</span></span></span><span style=display:flex><span><span style=color:#f92672></span><span style=color:#a6e22e>+			if is_luks /mnt/$DEV/$LPTH; then
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+				load_dm_modules
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e></span> 				losetup /dev/loop2 /mnt/$DEV/$LPTH
+</span></span><span style=display:flex><span> 				echo $i&#34;found encrypted .dat container&#34;
+</span></span><span style=display:flex><span><span style=color:#f92672>-				/opt/000-kernel/sbin/cryptsetup luksOpen /dev/loop2 crypt
+</span></span></span><span style=display:flex><span><span style=color:#f92672></span><span style=color:#a6e22e>+				if [ -f /keys/changesdat ]; then
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+					/opt/000-kernel/sbin/cryptsetup luksOpen /dev/loop2 crypt --key-file=/keys/changesdat || /opt/000-kernel/sbin/cryptsetup luksOpen /dev/loop2 crypt
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+				else
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+					/opt/000-kernel/sbin/cryptsetup luksOpen /dev/loop2 crypt
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e>+				fi
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e></span> 				fsck_dat /dev/mapper/crypt
+</span></span><span style=display:flex><span> 				mount /dev/mapper/crypt /memory/changes 2&gt;/dev/null &amp;&amp; touch /memory/changes/._test1 2&gt;/dev/null
+</span></span><span style=display:flex><span> 			else
+</span></span><span style=display:flex><span><span style=color:#75715e>@@ -146,7 +208,7 @@
+</span></span></span><span style=display:flex><span><span style=color:#75715e></span> 				echo &#34;boot will continue in &#39;[1;36mAlways Fresh[0m&#39; mode for this session&#34;
+</span></span><span style=display:flex><span> 				sleep 10; CHGERR=1; rmdir /mnt/$DEV/$LPTH/changes; fail_chn
+</span></span><span style=display:flex><span> 			else
+</span></span><span style=display:flex><span><span style=color:#f92672>-				echo $i&#34;filesystem is posix compatible&#34;; CHNDEV=/mnt/$DEV
+</span></span></span><span style=display:flex><span><span style=color:#f92672></span><span style=color:#a6e22e>+				echo $i&#34;filesystem is posix compatible&#34;; [ $CHGLUKSDEV ] &amp;&amp; CHNDEV=/mnt/$CHGLUKSDEV || CHNDEV=/mnt/$DEV
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e></span> 				rmdir /memory/changes/mnt/* 2&gt;/dev/null
+</span></span><span style=display:flex><span> 				rm -rf /memory/changes/var/lock/* /var/run/laptop-mode-tools/* /var/spool/cron/cron.??????
+</span></span><span style=display:flex><span> 				for x in `find /memory/changes/var/run -name &#34;*pid&#34; 2&gt;/dev/null`; do rm $x; done
+</span></span><span style=display:flex><span><span style=color:#75715e>@@ -160,7 +222,7 @@
+</span></span></span><span style=display:flex><span><span style=color:#75715e></span> 					#chown -R guest /memory/changes/home/guest 2&gt;/dev/null
+</span></span><span style=display:flex><span> 				fi
+</span></span><span style=display:flex><span> 			fi
+</span></span><span style=display:flex><span><span style=color:#f92672>-		else
+</span></span></span><span style=display:flex><span><span style=color:#f92672></span><span style=color:#a6e22e>+		elif [ ! $CHGERR ]; then
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e></span> 			echo $i&#34;changes not writable, using memory instead&#34;; CHGERR=2; umount /memory/changes 2&gt;/dev/null; fail_chn
+</span></span><span style=display:flex><span> 		fi
+</span></span><span style=display:flex><span> 	else
+</span></span><span style=display:flex><span><span style=color:#75715e>@@ -170,6 +232,7 @@
+</span></span></span><span style=display:flex><span><span style=color:#75715e></span> 	 echo $i&#34;changes cheatcode not found, using memory only&#34;; fail_chn
+</span></span><span style=display:flex><span> fi
+</span></span><span style=display:flex><span> 
+</span></span><span style=display:flex><span><span style=color:#a6e22e>+rm -rf /keys
+</span></span></span><span style=display:flex><span><span style=color:#a6e22e></span> mkdir -p /memory/changes/mnt/live
+</span></span><span style=display:flex><span> 
+</span></span><span style=display:flex><span> debug
+</span></span></code></pre></div><p>and apply it to extracted ramdisk</p><pre tabindex=0><code>root@porteus:/tmp/tmp.CVEW0IeOtV# patch -p1 &lt; /tmp/patch 
+patching file etc/porteus/initrd.ver
+patching file fatal
+patching file finit
+patching file linuxrc
+root@porteus:/tmp/tmp.CVEW0IeOtV#
+</code></pre><p>Overwrite old ramdisk image with new one</p><pre tabindex=0><code>root@porteus:/tmp/tmp.CVEW0IeOtV# find . | cpio -H newc -o | xz --check=crc32 --x86 --lzma2 &gt; /mnt/dm-0/boot/syslinux/initrd.xz
+4833 blocks
+root@porteus:/tmp/tmp.CVEW0IeOtV#
+</code></pre><h2 id=creating-a-second-ramdisk-image-for-required-kernel-modules-and-program-for-opening-encrypted-container>Creating a second ramdisk image (for required kernel modules and program for opening encrypted container)</h2><p>Although Porteus now can recognize encrypted container on partition, can&rsquo;t open it yet because there is no <code>cryptsetup</code> program which could do it. It is in <code>000-kernel</code> module and it is used for opening encrypted container image with changes on unencrypted partition. In this case to access <code>000-kernel</code> containing <code>cryptsetup</code> program we first must open encrypted container, but we can&rsquo;t do it without this program. Such as vicious circle.</p><p>So, again create temporary folder and go to it</p><pre tabindex=0><code>root@porteus:/tmp/tmp.CVEW0IeOtV# cd $(mktemp -d)
+root@porteus:/tmp/tmp.Xk1JROw4CT#
+</code></pre><p>Mount <code>000-kernel.xzm</code></p><pre tabindex=0><code>root@porteus:/tmp/tmp.Xk1JROw4CT# mkdir kernel
+root@porteus:/tmp/tmp.Xk1JROw4CT# mount /mnt/dm-0/porteus/base/000-kernel.xzm kernel
+</code></pre><p>Set kernel version in <code>kver</code> variable, will be referenced to it few times</p><pre tabindex=0><code>root@porteus:/tmp/tmp.Xk1JROw4CT# kver=$(basename $(find kernel/lib/modules/ -type d -name &#34;*-porteus&#34;))
+</code></pre><p>Copy <code>cryptsetup</code></p><pre tabindex=0><code>root@porteus:/tmp/tmp.Xk1JROw4CT# mkdir bin
+root@porteus:/tmp/tmp.Xk1JROw4CT# cp kernel/sbin/cryptsetup bin
+</code></pre><p>Save kernel module list, which are needed for opening container, to file</p><pre tabindex=0><code>root@porteus:/tmp/tmp.Xk1JROw4CT# for mod in `find kernel/lib/modules/$kver/kernel/{crypto,arch/x86/crypto,drivers/md} -name &#34;*.ko&#34;`; do grep `basename $mod`: kernel/lib/modules/$kver/modules.dep | sed s/:// | tr &#34; &#34; &#34;\n&#34; &gt;&gt; mod; done
+</code></pre><p>Copy modules from list to temporary folder, then move them to proper place</p><pre tabindex=0><code>root@porteus:/tmp/tmp.Xk1JROw4CT# mkdir out
+root@porteus:/tmp/tmp.Xk1JROw4CT# for x in `sort -u mod`; do cp -a --parents kernel/lib/modules/$kver/$x out; done
+root@porteus:/tmp/tmp.Xk1JROw4CT# mv out/kernel/lib .
+</code></pre><p>Unmount 000-kernel.xzm</p><pre tabindex=0><code>root@porteus:/tmp/tmp.Xk1JROw4CT# umount kernel
+</code></pre><p>Do cleanup</p><pre tabindex=0><code>root@porteus:/tmp/tmp.Xk1JROw4CT# rmdir out/kernel out kernel
+root@porteus:/tmp/tmp.Xk1JROw4CT# rm mod
+</code></pre><p>Create kernel module dependency list</p><pre tabindex=0><code>root@porteus:/tmp/tmp.Xk1JROw4CT# depmod -b . $kver
+</code></pre><p>These warnings can be ignored</p><pre tabindex=0><code>depmod: WARNING: could not open modules.order at /tmp/tmp.Xk1JROw4CT/./lib/modules/6.5.5-porteus: No such file or directory
+depmod: WARNING: could not open modules.builtin at /tmp/tmp.Xk1JROw4CT/./lib/modules/6.5.5-porteus: No such file or directory
+</code></pre><p>Create second ramdisk image</p><pre tabindex=0><code>root@porteus:/tmp/tmp.Xk1JROw4CT# find . | cpio -H newc -o | xz --check=crc32 --x86 --lzma2 &gt; /mnt/dm-0/boot/syslinux/initrd-crypt.xz
+17020 blocks
+root@porteus:/tmp/tmp.Xk1JROw4CT#
+</code></pre><p>Don&rsquo;t forget to add new image to the initrd line in grub config</p><pre tabindex=0><code>menuentry &#34;Porteus&#34; {
+	linux /boot/syslinux/vmlinuz from=UUID:RePlAcE-bY-uUiD-oF-cOnTaInEr
+	initrd /boot/syslinux/initrd.xz /boot/syslinux/initrd-crypt.xz
+}
+</code></pre><h2 id=finish>Finish</h2><p>Reboot PC and check if encrypted system will boot.</p><p>This could be the end of this tutorial, but&mldr;</p><h2 id=but-thats-not-all>But that&rsquo;s not all</h2><h3 id=when-you-dont-want-to-enter-container-passwords-multiple-times>When you don&rsquo;t want to enter container passwords multiple times</h3><p>Create another temporary directory and go to it again</p><pre tabindex=0><code>root@porteus:/home/guest# cd $(mktemp -d)
+root@porteus:/tmp/tmp.EFiZQAcvZ9#
+</code></pre><p>Create <code>keys</code> folder and enter into</p><pre tabindex=0><code>root@porteus:/tmp/tmp.EFiZQAcvZ9# mkdir keys
+root@porteus:/tmp/tmp.EFiZQAcvZ9# cd keys
+root@porteus:/tmp/tmp.EFiZQAcvZ9/keys#
+</code></pre><p>Create new files with specific names for opening containers here:</p><ul><li>porteus - Porteus partition</li><li>changes - changes partition (don&rsquo;t need to create if will be on the same partition as Porteus or will be unencrypted)</li><li>changesdat - encrypted changes file (don&rsquo;t need to create if it&rsquo;s not to be encrypted)</li></ul><p>Generate file with random data</p><pre tabindex=0><code>root@porteus:/tmp/tmp.EFiZQAcvZ9/keys# dd if=/dev/random of=porteus bs=1K count=1
+1+0 records in
+1+0 records out
+1024 bytes (1.0 kB, 1.0 KiB) copied, 0.000816108 s, 1.3 MB/s
+root@porteus:/tmp/tmp.EFiZQAcvZ9/keys# 
+</code></pre><p>But before adding new key, check how many keys are added to container</p><pre tabindex=0><code>root@porteus:/tmp/tmp.EFiZQAcvZ9/keys# cryptsetup luksDump /dev/sdc1
+LUKS header information for /dev/sdc1
+
+Version:       	1
+Cipher name:   	aes
+Cipher mode:   	xts-plain64
+Hash spec:     	sha256
+Payload offset:	4096
+MK bits:       	512
+MK digest:     	da 10 74 58 fe 70 88 32 e0 9a a6 8b ad 1a a1 66 55 05 a4 5c 
+MK salt:       	74 17 8c d5 53 2c 2d bf da 67 9a c3 ff bd 22 42 
+               	e9 3e 3a b3 97 fb 05 34 ae b2 15 16 fb c4 79 b7 
+MK iterations: 	31326
+UUID:          	5b9b4bcd-cb8e-4858-a966-8dea23ec676e
+
+Key Slot 0: ENABLED
+	Iterations:         	501230
+	Salt:               	98 f7 f1 11 06 7e fa cc 5c 17 ff 98 26 7b b0 46 
+	                      	13 1b 4b 4b 01 08 4a ac 32 1b 4f 9f 4a 03 9e 20 
+	Key material offset:	8
+	AF stripes:            	4000
+Key Slot 1: DISABLED
+Key Slot 2: DISABLED
+Key Slot 3: DISABLED
+Key Slot 4: DISABLED
+Key Slot 5: DISABLED
+Key Slot 6: DISABLED
+Key Slot 7: DISABLED
+root@porteus:/tmp/tmp.EFiZQAcvZ9/keys#
+</code></pre><p>As you see, here is only one key added</p><p>Add second key to the container</p><pre tabindex=0><code>root@porteus:/tmp/tmp.EFiZQAcvZ9/keys# cryptsetup luksAddKey /dev/sdc1 porteus 
+Enter any existing passphrase: 
+root@porteus:/tmp/tmp.EFiZQAcvZ9/keys#
+</code></pre><p>and check again</p><pre tabindex=0><code>root@porteus:/tmp/tmp.EFiZQAcvZ9/keys# cryptsetup luksDump /dev/sdc1
+LUKS header information for /dev/sdc1
+
+Version:       	1
+Cipher name:   	aes
+Cipher mode:   	xts-plain64
+Hash spec:     	sha256
+Payload offset:	4096
+MK bits:       	512
+MK digest:     	da 10 74 58 fe 70 88 32 e0 9a a6 8b ad 1a a1 66 55 05 a4 5c 
+MK salt:       	74 17 8c d5 53 2c 2d bf da 67 9a c3 ff bd 22 42 
+               	e9 3e 3a b3 97 fb 05 34 ae b2 15 16 fb c4 79 b7 
+MK iterations: 	31326
+UUID:          	5b9b4bcd-cb8e-4858-a966-8dea23ec676e
+
+Key Slot 0: ENABLED
+	Iterations:         	501230
+	Salt:               	98 f7 f1 11 06 7e fa cc 5c 17 ff 98 26 7b b0 46 
+	                      	13 1b 4b 4b 01 08 4a ac 32 1b 4f 9f 4a 03 9e 20 
+	Key material offset:	8
+	AF stripes:            	4000
+Key Slot 1: ENABLED
+	Iterations:         	499320
+	Salt:               	d1 74 5a a8 f8 e4 aa d6 f3 03 cf 14 ca 80 87 5b 
+	                      	27 28 ea 75 60 40 a7 4b c9 83 de 7e e0 07 5b 3e 
+	Key material offset:	512
+	AF stripes:            	4000
+Key Slot 2: DISABLED
+Key Slot 3: DISABLED
+Key Slot 4: DISABLED
+Key Slot 5: DISABLED
+Key Slot 6: DISABLED
+Key Slot 7: DISABLED
+root@porteus:/tmp/tmp.EFiZQAcvZ9/keys#
+</code></pre><p>Now there are added two keys that can be used to open encrypted container (of course the first one is password).</p><p>Do the same for the rest of containers, which you want to be encrypted, but you don&rsquo;t want to enter passwords for it.</p><p>Leave this folder and create next (last) ramdisk image</p><pre tabindex=0><code>root@porteus:/tmp/tmp.EFiZQAcvZ9/keys# cd ..
+root@porteus:/tmp/tmp.EFiZQAcvZ9# find . | cpio -H newc -o | xz --check=crc32 --x86 --lzma2 &gt; /mnt/dm-0/boot/syslinux/initrd-keys.xz
+3 blocks
+root@porteus:/tmp/tmp.EFiZQAcvZ9#
+</code></pre><p>Don&rsquo;t forget about permissions for this image - it&rsquo;s very important that users other than root don&rsquo;t have access to keys</p><pre tabindex=0><code>root@porteus:/tmp/tmp.EFiZQAcvZ9# chmod 400 /mnt/dm-0/boot/syslinux/initrd-keys.xz 
+</code></pre><p>And add new ramdisk image to initrd line in grub config</p><pre tabindex=0><code>menuentry &#34;Porteus&#34; {
+	linux /boot/syslinux/vmlinuz from=UUID:RePlAcE-bY-uUiD-oF-cOnTaInEr
+	initrd /boot/syslinux/initrd.xz /boot/syslinux/initrd-crypt.xz /boot/syslinux/initrd-keys.xz
+}
+</code></pre><p>That&rsquo;s all, now you need to enter password only once in GRUB.</p><p>Notes:</p><ul><li>if incorrect key was added to ramdisk, cryptsetup will ask for password</li><li>key files will be deleted from ramdisk after moments when they could be used, regardless of their correctness and whether they are used, and after Porteus data aren&rsquo;t found</li><li>only three hard-coded encrypted containers listed above can be opened during boot, before the actual system is loaded</li></ul><h3 id=when-you-need-to-update-kernel>When you need to update kernel</h3><p>Before reboot you need to execute the script below, in which the first argument is a path to <code>000-kernel.xzm</code> and second argument is a path where ramdisk image will be saved, eg. <code>/mnt/dm-0/boot/syslinux/initrd-crypt.xz</code> (NOTE: replaces the specified file if exists).</p><div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash><span style=display:flex><span><span style=color:#75715e>#!/bin/bash
+</span></span></span><span style=display:flex><span><span style=color:#75715e></span>
+</span></span><span style=display:flex><span><span style=color:#66d9ef>if</span> <span style=color:#f92672>[</span> -z $1 <span style=color:#f92672>]</span> <span style=color:#f92672>||</span> <span style=color:#f92672>[</span> -z $2 <span style=color:#f92672>]</span>; <span style=color:#66d9ef>then</span> echo <span style=color:#e6db74>&#34;usage: </span>$0<span style=color:#e6db74> path/to/000-kernel.xzm path/to/output/initrd-crypt.xz&#34;</span>; exit 1; <span style=color:#66d9ef>fi</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>kernelxzm<span style=color:#f92672>=</span><span style=color:#e6db74>&#34;</span><span style=color:#66d9ef>$(</span>realpath $1<span style=color:#66d9ef>)</span><span style=color:#e6db74>&#34;</span>
+</span></span><span style=display:flex><span>output<span style=color:#f92672>=</span><span style=color:#e6db74>&#34;</span><span style=color:#66d9ef>$(</span>realpath $2<span style=color:#66d9ef>)</span><span style=color:#e6db74>&#34;</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#66d9ef>if</span> <span style=color:#f92672>[</span> <span style=color:#66d9ef>$(</span>basename <span style=color:#e6db74>&#34;</span>$kernelxzm<span style=color:#e6db74>&#34;</span><span style=color:#66d9ef>)</span> !<span style=color:#f92672>=</span> <span style=color:#e6db74>&#34;000-kernel.xzm&#34;</span> <span style=color:#f92672>]</span>; <span style=color:#66d9ef>then</span> echo <span style=color:#e6db74>&#34;invalid file selected&#34;</span>; exit 3; <span style=color:#66d9ef>fi</span>
+</span></span><span style=display:flex><span><span style=color:#66d9ef>if</span> <span style=color:#f92672>[</span> ! -f <span style=color:#e6db74>&#34;</span>$kernelxzm<span style=color:#e6db74>&#34;</span> <span style=color:#f92672>]</span>; <span style=color:#66d9ef>then</span> echo <span style=color:#e6db74>&#34;000-kernel.xzm not found&#34;</span>; exit 2; <span style=color:#66d9ef>fi</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>set -e
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>temp<span style=color:#f92672>=</span><span style=color:#66d9ef>$(</span>mktemp -d<span style=color:#66d9ef>)</span>
+</span></span><span style=display:flex><span>echo <span style=color:#e6db74>&#34;tmp folder is </span>$temp<span style=color:#e6db74>&#34;</span>
+</span></span><span style=display:flex><span>cd $temp
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>mkdir kernel
+</span></span><span style=display:flex><span>mount <span style=color:#e6db74>&#34;</span>$kernelxzm<span style=color:#e6db74>&#34;</span> kernel
+</span></span><span style=display:flex><span>kver<span style=color:#f92672>=</span><span style=color:#66d9ef>$(</span>basename <span style=color:#66d9ef>$(</span>find kernel/lib/modules/ -type d -name <span style=color:#e6db74>&#34;*-porteus&#34;</span><span style=color:#66d9ef>))</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>mkdir bin
+</span></span><span style=display:flex><span>cp kernel/sbin/cryptsetup bin
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#66d9ef>for</span> mod in <span style=color:#e6db74>`</span>find kernel/lib/modules/$kver/kernel/<span style=color:#f92672>{</span>crypto,arch/x86/crypto,drivers/md<span style=color:#f92672>}</span> -name <span style=color:#e6db74>&#34;*.ko&#34;</span><span style=color:#e6db74>`</span>; <span style=color:#66d9ef>do</span>
+</span></span><span style=display:flex><span>    grep <span style=color:#e6db74>`</span>basename $mod<span style=color:#e6db74>`</span>: kernel/lib/modules/$kver/modules.dep | sed s/:// | tr <span style=color:#e6db74>&#34; &#34;</span> <span style=color:#e6db74>&#34;\n&#34;</span> &gt;&gt; mod
+</span></span><span style=display:flex><span><span style=color:#66d9ef>done</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>mkdir out
+</span></span><span style=display:flex><span><span style=color:#66d9ef>for</span> x in <span style=color:#e6db74>`</span>sort -u mod<span style=color:#e6db74>`</span>; <span style=color:#66d9ef>do</span> cp -a --parents kernel/lib/modules/$kver/$x out; <span style=color:#66d9ef>done</span>
+</span></span><span style=display:flex><span>rm mod
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>umount kernel
+</span></span><span style=display:flex><span>rmdir kernel
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>mv out/kernel/lib .
+</span></span><span style=display:flex><span>rmdir out/kernel out
+</span></span><span style=display:flex><span>depmod -b . $kver
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>find . | cpio -H newc -o | xz --check<span style=color:#f92672>=</span>crc32 --x86 --lzma2 &gt; <span style=color:#e6db74>&#34;</span>$output<span style=color:#e6db74>&#34;</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>cd ..
+</span></span><span style=display:flex><span>echo <span style=color:#e6db74>&#34;cleanup tmp&#34;</span>
+</span></span><span style=display:flex><span>rm -rf $temp
+</span></span></code></pre></div><p>Just like before, ignore these warnings</p><pre tabindex=0><code>depmod: WARNING: could not open modules.order at /tmp/tmp.75ZjuSk7Nj/./lib/modules/6.6.3-porteus: No such file or directory
+depmod: WARNING: could not open modules.builtin at /tmp/tmp.75ZjuSk7Nj/./lib/modules/6.6.3-porteus: No such file or directory
+</code></pre><h3 id=about-fsck-cheatcode>About fsck cheatcode</h3><p>If <code>fsck</code> cheatcode was added, filesystem consistency will be verified also on opened encrypted containers.</p><h3 id=about-extramod-and-rootcopy-cheatcodes>About extramod and rootcopy cheatcodes</h3><p>Currently <code>extramod</code> works only within an encrypted container on Porteus partition (<code>extramod=/some/thing</code>) and unencrypted partitions. Maybe similar is with <code>rootcopy</code>, although I haven&rsquo;t checked it.</p></div><div class=blog__tags><a href=../../tags/tutorial>#tutorial</a>
+<a href=../../tags/porteus>#porteus</a>
+<a href=../../tags/encryption>#encryption</a>
+<a href=../../tags/luks>#luks</a>
+<a href=../../tags/grub2>#grub2</a>
+<a href=../../tags/initrd>#initrd</a>
+<a href=../../tags/linux>#linux</a></div><div class=blog__navigate><div class=blog__navigateButtons><div class=blog__navigateButtons__previous><a href=../../../en/posts/things-have-changed-a-bit/>&#8592; Previous Post: Things have changed a bit</a></div><div class=blog__navigateButtons__next></div></div></div><script src=https://utteranc.es/client.js repo=i3slkiller/i3slkiller.github.io issue-term=pathname theme=icy-dark crossorigin=anonymous async></script></div></article></section></main><footer><div class=footer__left><span>(C) 2023 i3slkiller</span></div><div class=footer__right><select class=footer__selectlang onchange="this.options[this.selectedIndex].value&&(window.location=this.options[this.selectedIndex].value)"><option value=/pl/>Polski</option><option value=/en/ selected>English</option></select></div></footer></body></html>
