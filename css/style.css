@@ -54,7 +54,7 @@ a:active {
 	font-weight: bold;
 }
 main {
-	margin: 0 200px;
+	margin: 0 10%;
 }
 main a:visited {
 	color: #ffff00;
@@ -65,6 +65,9 @@ pre {
 	border-radius: 4px;
 	padding: 4px;
 	margin: 1em 0px;
+	overflow: scroll;
+	max-height: 600px;
+	scrollbar-width: thin;
 }
 
 blockquote {
@@ -177,4 +180,10 @@ footer > div {
 	background: #000000;
 	color: #ffffff;
 	font-family: inherit;
+}
+
+@media (max-width: 800px) {
+	main {
+		margin: 0 12px;
+	}
 }
