@@ -1,7 +1,7 @@
 ---
 title: "(Almost) full Porteus disk encryption"
 date: 2023-12-30
-publishDate: <[FillPublishDate]>
+publishDate: 2023-12-30T14:42:22+01:00
 draft: false
 tags: ['tutorial', 'porteus', 'encryption', 'luks', 'grub2', 'linux']
 translationKey: PorteusFullDiskEncryption
